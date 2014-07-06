@@ -24,17 +24,13 @@
 #include <msplib_common.h>
 #include <timer_lib.h>
 #include <leds.h>
+#include <servo.h>
 
-#if 0
-#include <config.h>
-#include <uart.h>
-#endif
-
-#if 0
+#if 1
 static void xdelay(void)
 {
-	volatile int i = 0xffff;
-	volatile int j = 0x5;
+	volatile int i = 0xfff;
+	volatile int j = 0x1;
 
 	while(j--)
 		while(i--);
@@ -92,7 +88,7 @@ static track_mode_t freq2track(unsigned short delta)
 
 //static unsigned short prev_l, prev_r;
 //static char stable_l, stable_r;
-track_mode_t track_l = TRACK_STOP, track_r = TRACK_STOP;
+//track_mode_t track_l = TRACK_STOP, track_r = TRACK_STOP;
 static unsigned char idxl, idxr;
 static unsigned short deltsl[16];
 static unsigned short deltsr[16];
@@ -200,28 +196,7 @@ static void set_trackr(track_mode_t mode)
 	}
 }
 
-/* According to theory - valid pulse width is 1 .. 2 ms.
- * Really measured for HK15138 range 0.6 .. 2.6 ms
- */
-//#define SERVO_MIN 600
-#define SERVO_MIN 550
-//#define SERVO_MAX 2600
-#define SERVO_MAX 2200
-static void servo_init(void)
-{
-	/* Servo 1. JP7, P2.2.
-	 * Pin to mode TA1.1:
-	 * DIR - 1
-	 * SEL - 1
-	 * SEL2 - 0
-	 */
-	P2DIR |= BIT2;
-	P2SEL |= BIT2;
-
-	TA1CCTL1 = OUTMOD_7;			// CCR1 reset/set
-	TA1CCR1 = (SERVO_MIN + SERVO_MAX)>>1;					// CCR1 PWM duty cycle
-}
-
+#if 0
 static void servo_up(void)
 {
 	unsigned int val = TA1CCR1;
@@ -229,8 +204,8 @@ static void servo_up(void)
 
 	while(i--);
 
-	if (++val > SERVO_MAX)
-		val = SERVO_MAX;
+	if (++val > SERVO_180)
+		val = SERVO_180;
 	TA1CCR1 = val;
 }
 
@@ -241,16 +216,18 @@ static void servo_down(void)
 
 	while(i--);
 
-	if (--val < SERVO_MIN)
-		val = SERVO_MIN;
+	if (--val < SERVO_0)
+		val = SERVO_0;
 	TA1CCR1 = val;
 }
+#endif
 
 void main(void)
 {
 	unsigned int deltal, deltar;
 	track_mode_t new_model, new_moder;
 	int i, deviation;
+	int srv2_up, angle = 90;
 
 	WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
 
@@ -265,6 +242,22 @@ void main(void)
 	_EINT();
 	while (1)
 	{
+		if (srv2_up)
+		{
+			angle++;
+			if (angle >= SRV_ANGLE_MAX)
+				srv2_up = 0;
+		}
+		else
+		{
+			angle--;
+			if (angle <= SRV_ANGLE_MIN)
+				srv2_up = 1;
+		}
+		servo_set(SRV2, angle);
+		xdelay();
+
+#if 0
 		if (freq_watchdog++ > 0xff)
 		{
 			memset(deltsl, 0, sizeof(deltsl));
@@ -304,73 +297,7 @@ void main(void)
 			servo_up();
 		if (new_model == TRACK_DOWN)
 			servo_down();
-
-	}
-#if 0
-	while (1)
-	{
-		led_set(LED, 0);
-		led_set(TURBO, 0);
-
-		led_set(MLF, 1);
-		led_set(MRF, 1);
-		STOP;
-
-		led_set(MLR, 1);
-		led_set(MRR, 1);
-		STOP;
-
-		led_set(MLF, 1);
-		STOP;
-
-		led_set(MLR, 1);
-		STOP;
-
-		led_set(MRF, 1);
-		STOP;
-
-		led_set(MRR, 1);
-		STOP;
-
-		led_set(MLF, 1);
-		led_set(MRR, 1);
-		STOP;
-
-		led_set(MLR, 1);
-		led_set(MRF, 1);
-		STOP;
-
-		//---------------------
-		led_set(LED, 1);
-		led_set(TURBO, 1);
-
-		led_set(MLF, 1);
-		led_set(MRF, 1);
-		STOP;
-
-		led_set(MLR, 1);
-		led_set(MRR, 1);
-		STOP;
-
-		led_set(MLF, 1);
-		STOP;
-
-		led_set(MLR, 1);
-		STOP;
-
-		led_set(MRF, 1);
-		STOP;
-
-		led_set(MRR, 1);
-		STOP;
-
-		led_set(MLF, 1);
-		led_set(MRR, 1);
-		STOP;
-
-		led_set(MLR, 1);
-		led_set(MRF, 1);
-		STOP;
-	}
 #endif
+
+	}
 }
