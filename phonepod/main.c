@@ -3,19 +3,39 @@
  * P1.0 NC
  * P1.1 UART_RX
  * P1.2 UART_TX
- * P1.3 K5
- * P1.4 K4
- * P1.5 K3
- * P1.6 MIC
+ * P1.3 StepM OnOff
+ * P1.4 StepM B-
+ * P1.5 StepM B+
+ * P1.6 AJack MIC
  * P1.7 NC
- * P2.0 K2
- * P2.1 K1
+ * P2.0 StepM A-
+ * P2.1 StepM A+
  * P2.2 SRV1 (JP7)
- * P2.3 BTN
+ * P2.3 StepM ZERO
  * P2.4 LED
  * P2.5 SRV2 (JP6)
- * P2.6 LEFT_D
- * P2.7 RIGHT_D
+ * P2.6 AJack LEFT_D
+ * P2.7 AJack RIGHT_D
+ *
+ * Clocks:
+ * DCO 8 MHz
+ * Master Clock MCLK - 8 MHz
+ * Sub master  SMCLK - 8 MHz
+ *
+ * Timers:
+ * TA (TA0) 1 MHz
+ * TB (TA1) 1 MHz
+ *
+ * Usage of timers:
+ * TA0:
+ *    count continuous
+ *    interrupts - NO
+ *    used for measure Audio Input intervals (tones period)
+ * TA1:
+ *    count up to 20000 (20 ms)
+ *    interrupts YES
+ *    interrupts  CCR0 - RTC (50 HZ)
+ *    CCR1 & CCR2 - for SERVO PWM
  */
 #include <msp430g2553.h>
 #include <string.h>
@@ -25,16 +45,26 @@
 #include <timer_lib.h>
 #include <leds.h>
 #include <servo.h>
+#include <buttons.h>
+#include <step_motor.h>
 
-#if 1
+#if 0
 static void xdelay(void)
 {
-	volatile int i = 0xfff;
-	volatile int j = 0x1;
+	volatile int i = 0xffff;
+	volatile int j = 0x4;
 
 	while(j--)
 		while(i--);
 }
+
+static void udelay(void)
+{
+	volatile int i = 0xffff;
+
+	while(i--);
+}
+
 #endif
 
 void jack_init(void)
@@ -49,7 +79,7 @@ void jack_init(void)
 	P2IES |= JACK_P2;							// Hi/Lo edge
 	P2IFG &= ~JACK_P2;							// IFG cleared
 }
-
+#if 0
 typedef enum {
 	TRACK_ERR = -1,
 	TRACK_BW_F = 0, /* 500 Hz, 2000, 0x7d0 */
@@ -85,6 +115,7 @@ static track_mode_t freq2track(unsigned short delta)
 		return TRACK_DOWN;
 	return TRACK_ERR;
 }
+#endif
 
 //static unsigned short prev_l, prev_r;
 //static char stable_l, stable_r;
@@ -124,6 +155,7 @@ __interrupt void Port_2(void)
 		led_set(MRF, 0); \
 		xdelay();
 
+#if 0
 static void set_trackl(track_mode_t mode)
 {
 	switch (mode)
@@ -195,39 +227,15 @@ static void set_trackr(track_mode_t mode)
 		led_set(MRF, 0);
 	}
 }
-
-#if 0
-static void servo_up(void)
-{
-	unsigned int val = TA1CCR1;
-	volatile int i = 0xfff;
-
-	while(i--);
-
-	if (++val > SERVO_180)
-		val = SERVO_180;
-	TA1CCR1 = val;
-}
-
-static void servo_down(void)
-{
-	unsigned int val = TA1CCR1;
-	volatile int i = 0xfff;
-
-	while(i--);
-
-	if (--val < SERVO_0)
-		val = SERVO_0;
-	TA1CCR1 = val;
-}
 #endif
 
 void main(void)
 {
-	unsigned int deltal, deltar;
-	track_mode_t new_model, new_moder;
-	int i, deviation;
+//	unsigned int deltal, deltar;
+//	track_mode_t new_model, new_moder;
+//	int i, deviation;
 	int srv2_up, angle = 90;
+	int step_frw, step_pos = 140;
 
 	WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
 
@@ -236,26 +244,50 @@ void main(void)
 	timer_init();
 	servo_init();
 	leds_init();
+	buttons_init();
+	stepm_init();
 	jack_init();
 	leds_hello(LED);
 
-	_EINT();
+	stepm_zeroise();
+//	_EINT();
+
+	stepm_set_pos(240);
+	stepm_set_pos(120);
+	stepm_set_pos(240);
+	stepm_set_pos(20);
+	stepm_set_pos(240);
 	while (1)
 	{
 		if (srv2_up)
 		{
-			angle++;
+			angle += 16;
 			if (angle >= SRV_ANGLE_MAX)
 				srv2_up = 0;
 		}
 		else
 		{
-			angle--;
+			angle -= 16;
 			if (angle <= SRV_ANGLE_MIN)
 				srv2_up = 1;
 		}
 		servo_set(SRV2, angle);
-		xdelay();
+
+		if (step_frw)
+		{
+			step_pos--;
+			if (step_pos <= 40)
+				step_frw = 0;
+		}
+		else
+		{
+			step_pos++;
+			if (step_pos >= STEPM_POS_MAX)
+				step_frw = 1;
+		}
+		stepm_set_pos(step_pos);
+
+//		rtc_sleep_for(1);
 
 #if 0
 		if (freq_watchdog++ > 0xff)
